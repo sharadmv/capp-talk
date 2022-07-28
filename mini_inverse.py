@@ -1,69 +1,47 @@
 import jax
 import jax.numpy as jnp
-import numpy as np
 
 def f(x):
-  y = jnp.sin(x)
-  z = jnp.exp(y)
-  return jnp.cos(z)
+  return jnp.cos(jnp.exp(jnp.sin(x)))
+
+jaxpr = jax.make_jaxpr(f)(2.).jaxpr
+print(jaxpr)
 
 inverse_registry = {}
 
-def eval_jaxpr_inverse(jaxpr, consts, *outputs):
-  
+def eval_jaxpr_inverse(jaxpr, output):
+
   env = {}
-
-  def read_env(var):
-    if isinstance(var, jax.core.Literal):
-      return var.val
-    assert var in env, var
-    return env[var]
-
+  def read_env(atom):
+    if type(atom) is jax.core.Literal: return atom.val
+    return env[atom]
   def write_env(var, val):
     env[var] = val
 
-  jax.util.safe_map(write_env, jaxpr.outvars, outputs)
-  jax.util.safe_map(write_env, jaxpr.constvars, consts)
-  
+  write_env(jaxpr.outvars[0], output)
+
   for eqn in jaxpr.eqns[::-1]:
-    eqn_output = read_env(eqn.outvars[0])
-    inverse_rule = inverse_registry[eqn.primitive]
-    eqn_input = inverse_rule(eqn_output)
-    write_env(eqn.invars[0], eqn_input)
+    output = read_env(eqn.outvars[0])
+    input = inverse_registry[eqn.primitive](output)
+    write_env(eqn.invars[0], input)
   return read_env(jaxpr.invars[0])
 
-inverse_registry[jax.lax.cos_p] = lambda x: jnp.arccos(x)
-inverse_registry[jax.lax.exp_p] = lambda x: jnp.log(x)
 inverse_registry[jax.lax.sin_p] = lambda x: jnp.arcsin(x)
+inverse_registry[jax.lax.exp_p] = lambda x: jnp.log(x)
+inverse_registry[jax.lax.cos_p] = lambda x: jnp.arccos(x)
 
-closed_jaxpr = jax.make_jaxpr(f)(2.)
-print("=======================")
-print("Jaxpr:")
-print(closed_jaxpr)
-print("=======================")
-jaxpr, consts = closed_jaxpr.jaxpr, closed_jaxpr.consts
+print("Inverting f:", eval_jaxpr_inverse(jaxpr, f(-0.2)))
 
-out = f(0.5)
-print("f^-1(f(0.5)) =", eval_jaxpr_inverse(jaxpr, consts, out))
-
-print("======== Adding primitives ======")
 add_one_p = jax.core.Primitive("add_one")
 
 add_one_p.def_impl(lambda x: x + 1)
-add_one_p.def_abstract_eval(lambda x: x)
-
+add_one_p.def_abstract_eval(lambda x: jax.core.ShapedArray(x.shape, x.dtype))
 inverse_registry[add_one_p] = lambda x: x - 1
 
+print("============")
 def g(x):
   return add_one_p.bind(f(x))
 
+jaxpr = jax.make_jaxpr(g)(2.).jaxpr
 
-closed_jaxpr = jax.make_jaxpr(f)(2.)
-print("=======================")
-print("Jaxpr:")
-print(closed_jaxpr)
-print("=======================")
-jaxpr, consts = closed_jaxpr.jaxpr, closed_jaxpr.consts
-
-out = f(0.5)
-print("g^-1(g(0.5)) =", eval_jaxpr_inverse(jaxpr, consts, out))
+print("Inverting g:", eval_jaxpr_inverse(jaxpr, g(-0.2)))
