@@ -5,6 +5,8 @@ from oryx.core.interpreters import log_prob as lp
 
 import tensorflow_probability.substrates.jax as tfp
 
+# TALK ABOUT ORYX INVERSE HERE
+
 random_normal_p = jax.core.Primitive('random_normal')
 
 random_normal_p.def_impl(lambda key: random.normal(key))
@@ -57,4 +59,4 @@ def f(key, w):
   return w + random_normal_p.bind(key)
 
 w_grad = jax.grad(lp.log_prob(f), argnums=1)(2., -0.2)
-print("grad_w(log p(x=-0.2 | w)) =", w_grad)
+print("grad_w(log p(x=1.2 | w)) =", w_grad)
